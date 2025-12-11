@@ -400,16 +400,16 @@ extension Adjustments.StateModel {
     /// Determines if sensitivity adjustment is enabled based on target.
     func isAdjustSensEnabled(usingTarget initialTarget: Decimal? = nil) -> Bool {
         let target = initialTarget ?? tempTargetTarget
-        if target < normalTarget, lowTTlowersSens && autosensMax > 1 { return true }
-        if target > normalTarget, highTTraisesSens || isExerciseModeActive { return true }
+        if target < TempTargetCalculations.normalTarget, lowTTlowersSens && autosensMax > 1 { return true }
+        if target > TempTargetCalculations.normalTarget, highTTraisesSens || isExerciseModeActive { return true }
         return false
     }
 
     /// Computes the low value for the slider based on the target.
     func computeSliderLow(usingTarget initialTarget: Decimal? = nil) -> Double {
         let calcTarget = initialTarget ?? tempTargetTarget
-        guard calcTarget != 0 else { return 15 } // oref defined maximum sensitivity
-        let minSens = calcTarget < normalTarget ? 105 : 15
+        guard calcTarget != 0 else { return TempTargetCalculations.minSensitivityRatioTT } // oref defined maximum sensitivity
+        let minSens = calcTarget < TempTargetCalculations.normalTarget ? 105 : TempTargetCalculations.minSensitivityRatioTT
         return Double(max(0, minSens))
     }
 
@@ -418,7 +418,7 @@ extension Adjustments.StateModel {
         let calcTarget = initialTarget ?? tempTargetTarget
         guard calcTarget != 0
         else { return Double(autosensMax * 100) } // oref defined limit for increased insulin delivery
-        let maxSens = calcTarget > normalTarget ? 95 : Double(autosensMax * 100)
+        let maxSens = calcTarget > TempTargetCalculations.normalTarget ? 95 : Double(autosensMax * 100)
         return maxSens
     }
 
@@ -470,7 +470,7 @@ extension Adjustments.StateModel {
 
         debug(
             .default,
-            "checkStandardTT: target=\(target), settingHBT=\(settingHalfBasalTarget), rawPercentage=\(rawPercentage), percentage=\(result.percentage), minSensitivityRatioTT=\(minSensitivityRatioTT)"
+            "checkStandardTT: target=\(target), settingHBT=\(settingHalfBasalTarget), rawPercentage=\(rawPercentage), percentage=\(result.percentage), minSensitivityRatioTT=\(TempTargetCalculations.minSensitivityRatioTT)"
         )
 
         if let adjustedHBT = result.halfBasalTarget {

@@ -85,7 +85,41 @@ struct EditTempTargetForm: View {
                 }
             }
             .onAppear {
-                if halfBasalTarget != state.settingHalfBasalTarget { tempTargetSensitivityAdjustmentType = .slider }
+                // Determine if this is a custom slider adjustment or a standard with auto-adjustment
+                debug(
+                    .default,
+                    "checkStandardTT onAppear: halfBasalTarget=\(String(describing: halfBasalTarget)), settingHBT=\(state.settingHalfBasalTarget), percentage=\(percentage), target=\(target)"
+                )
+
+                if halfBasalTarget != nil,
+                   halfBasalTarget != state.settingHalfBasalTarget
+                {
+                    // Check if this was an auto-adjusted standard TT:
+                    // percentage is at minimum AND using settings HBT would have produced <= minimum (raw)
+                    let rawStandardPercentage = state.computeRawAdjustedPercentage(
+                        usingHBT: state.settingHalfBasalTarget,
+                        usingTarget: target
+                    )
+                    let isAutoAdjustedStandard = percentage == TempTargetCalculations.minSensitivityRatioTT &&
+                        rawStandardPercentage <= TempTargetCalculations.minSensitivityRatioTT
+
+                    debug(
+                        .default,
+                        "checkStandardTT onAppear: rawStandardPercentage=\(rawStandardPercentage), minSensitivityRatioTT=\(TempTargetCalculations.minSensitivityRatioTT), isAutoAdjustedStandard=\(isAutoAdjustedStandard)"
+                    )
+
+                    if !isAutoAdjustedStandard {
+                        tempTargetSensitivityAdjustmentType = .slider
+                        debug(.default, "checkStandardTT onAppear: Setting adjustment type to .slider")
+                    } else {
+                        debug(.default, "checkStandardTT onAppear: Keeping adjustment type as .standard (auto-adjusted)")
+                    }
+                } else {
+                    debug(
+                        .default,
+                        "checkStandardTT onAppear: Keeping adjustment type as .standard (HBT is nil or matches settings)"
+                    )
+                }
             }
             .sheet(isPresented: $state.isHelpSheetPresented) {
                 TempTargetHelpView(state: state, helpSheetDetent: $state.helpSheetDetent)
@@ -158,7 +192,7 @@ struct EditTempTargetForm: View {
             }
             .listRowBackground(Color.chart)
 
-            if target != state.normalTarget {
+            if target != TempTargetCalculations.normalTarget {
                 let computedHalfBasalTarget = Decimal(
                     state
                         .computeHalfBasalTarget(usingTarget: target, usingPercentage: percentage)
