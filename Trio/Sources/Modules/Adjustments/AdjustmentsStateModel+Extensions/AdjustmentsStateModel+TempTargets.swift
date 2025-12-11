@@ -389,15 +389,12 @@ extension Adjustments.StateModel {
         usingTarget initialTarget: Decimal? = nil,
         usingPercentage initialPercentage: Double? = nil
     ) -> Double {
-        let adjustmentPercentage = initialPercentage ?? percentage
-        let adjustmentRatio = Decimal(adjustmentPercentage / 100)
         let tempTargetValue: Decimal = initialTarget ?? tempTargetTarget
-        var halfBasalTargetValue = halfBasalTarget
-        if adjustmentRatio != 1 {
-            halfBasalTargetValue = ((2 * adjustmentRatio * normalTarget) - normalTarget - (adjustmentRatio * tempTargetValue)) /
-                (adjustmentRatio - 1)
-        }
-        return round(Double(halfBasalTargetValue))
+        let adjustmentPercentage = initialPercentage ?? percentage
+        return TempTargetCalculations.computeHalfBasalTarget(
+            target: tempTargetValue,
+            percentage: adjustmentPercentage
+        )
     }
 
     /// Determines if sensitivity adjustment is enabled based on target.
@@ -425,6 +422,19 @@ extension Adjustments.StateModel {
         return maxSens
     }
 
+    /// Computes the raw (unclamped) adjusted percentage for a given HBT and target.
+    /// This is used to check if the percentage would be below minSensitivityRatioTT.
+    func computeRawAdjustedPercentage(
+        usingHBT halfBasalTargetValue: Decimal,
+        usingTarget calcTarget: Decimal
+    ) -> Double {
+        TempTargetCalculations.computeRawAdjustedPercentage(
+            halfBasalTarget: halfBasalTargetValue,
+            target: calcTarget,
+            autosensMax: autosensMax
+        )
+    }
+
     /// Computes the adjusted percentage for the slider.
     func computeAdjustedPercentage(
         usingHBT initialHalfBasalTarget: Decimal? = nil,
@@ -432,13 +442,50 @@ extension Adjustments.StateModel {
     ) -> Double {
         let halfBasalTargetValue = initialHalfBasalTarget ?? halfBasalTarget
         let calcTarget = initialTarget ?? tempTargetTarget
-        let deviationFromNormal = halfBasalTargetValue - normalTarget
+        return TempTargetCalculations.computeAdjustedPercentage(
+            halfBasalTarget: halfBasalTargetValue,
+            target: calcTarget,
+            autosensMax: autosensMax
+        )
+    }
 
-        let adjustmentFactor = deviationFromNormal + (calcTarget - normalTarget)
-        let adjustmentRatio: Decimal = (deviationFromNormal * adjustmentFactor <= 0) ? autosensMax : deviationFromNormal /
-            adjustmentFactor
+    /// Computes the standard percentage and adjusted HBT for a given target.
+    /// If the raw percentage (using settingHalfBasalTarget) would be at or below minSensitivityRatioTT (15%),
+    /// returns an adjusted HBT that yields the minimum percentage instead.
+    /// - Parameter target: The target glucose value
+    /// - Returns: A tuple containing (percentage, halfBasalTarget) where halfBasalTarget is nil if standard HBT can be used
+    func computeStandardPercentageAndHBT(usingTarget target: Decimal) -> (percentage: Double, halfBasalTarget: Decimal?) {
+        let result = TempTargetCalculations.computeStandardPercentageAndHBT(
+            settingHalfBasalTarget: settingHalfBasalTarget,
+            target: target,
+            autosensMax: autosensMax
+        )
 
-        return Double(min(adjustmentRatio, autosensMax) * 100).rounded()
+        // Use raw percentage for debug logging
+        let rawPercentage = TempTargetCalculations.computeRawAdjustedPercentage(
+            halfBasalTarget: settingHalfBasalTarget,
+            target: target,
+            autosensMax: autosensMax
+        )
+
+        debug(
+            .default,
+            "checkStandardTT: target=\(target), settingHBT=\(settingHalfBasalTarget), rawPercentage=\(rawPercentage), percentage=\(result.percentage), minSensitivityRatioTT=\(minSensitivityRatioTT)"
+        )
+
+        if let adjustedHBT = result.halfBasalTarget {
+            debug(
+                .default,
+                "checkStandardTT: rawPercentage <= minSensitivityRatioTT, returning adjustedHBT=\(adjustedHBT), percentage=\(result.percentage)"
+            )
+        } else {
+            debug(
+                .default,
+                "checkStandardTT: rawPercentage > minSensitivityRatioTT, returning nil HBT, percentage=\(result.percentage)"
+            )
+        }
+
+        return result
     }
 }
 

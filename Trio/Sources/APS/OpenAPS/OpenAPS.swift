@@ -534,15 +534,26 @@ final class OpenAPS {
 
         // Check for active Temp Targets and adjust HBT if necessary
         try await context.perform {
-            // Check if a Temp Target is active and if its HBT differs from user preferences
+            // Check if a Temp Target is active
             if let activeTempTarget = try self.fetchActiveTempTargets().first,
                activeTempTarget.enabled,
-               let activeHBT = activeTempTarget.halfBasalTarget?.decimalValue,
-               activeHBT != defaultHalfBasalTarget
+               let targetValue = activeTempTarget.target?.decimalValue
             {
-                // Overwrite the HBT in preferences
-                adjustedPreferences.halfBasalExerciseTarget = activeHBT
-                debug(.openAPS, "Updated halfBasalExerciseTarget to active Temp Target value: \(activeHBT)")
+                // Compute effective HBT - handles both custom HBT and standard TT (where HBT might need adjustment)
+                let effectiveHBT = TempTargetCalculations.computeEffectiveHBT(
+                    storedHBT: activeTempTarget.halfBasalTarget?.decimalValue,
+                    settingHalfBasalTarget: defaultHalfBasalTarget,
+                    target: targetValue,
+                    autosensMax: preferences.autosensMax
+                )
+
+                if let effectiveHBT, effectiveHBT != defaultHalfBasalTarget {
+                    adjustedPreferences.halfBasalExerciseTarget = effectiveHBT
+                    debug(
+                        .openAPS,
+                        "checkStandardTT: Updated halfBasalExerciseTarget to \(effectiveHBT) for target \(targetValue) (stored HBT: \(String(describing: activeTempTarget.halfBasalTarget?.decimalValue)), settings HBT: \(defaultHalfBasalTarget))"
+                    )
+                }
             }
             // Overwrite the lowTTlowersSens if autosensMax does not support it
             if preferences.lowTemptargetLowersSensitivity, preferences.autosensMax <= 1 {
