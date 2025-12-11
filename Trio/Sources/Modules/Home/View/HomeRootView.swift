@@ -284,16 +284,20 @@ extension Home {
             var durationString = ""
             var percentageString = ""
             var target = (latestTempTarget.target ?? 100) as Decimal
-            var halfBasalTarget: Decimal = 160
-            if latestTempTarget.halfBasalTarget != nil {
-                halfBasalTarget = latestTempTarget.halfBasalTarget! as Decimal
-            } else { halfBasalTarget = state.settingHalfBasalTarget }
+            // Use TempTargetCalculations to get effective HBT (handles both custom and auto-adjusted standard TT)
+            let effectiveHBT = TempTargetCalculations.computeEffectiveHBT(
+                storedHBT: latestTempTarget.halfBasalTarget?.decimalValue,
+                settingHalfBasalTarget: state.settingHalfBasalTarget,
+                target: target,
+                autosensMax: state.autosensMax
+            ) ?? state.settingHalfBasalTarget
             var showPercentage = false
             if target > 100, state.isExerciseModeActive || state.highTTraisesSens { showPercentage = true }
             if target < 100, state.lowTTlowersSens, state.autosensMax > 1 { showPercentage = true }
             if showPercentage {
                 percentageString =
-                    " \(state.computeAdjustedPercentage(halfBasalTargetValue: halfBasalTarget, tempTargetValue: target))%" }
+                    " \(state.computeAdjustedPercentage(halfBasalTargetValue: effectiveHBT, tempTargetValue: target))%"
+            }
             target = state.units == .mmolL ? target.asMmolL : target
             let targetString = target == 0 ? "" : (fetchedTargetFormatter.string(from: target as NSNumber) ?? "") + " " +
                 state.units.rawValue + percentageString
