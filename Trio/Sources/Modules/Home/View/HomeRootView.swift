@@ -296,7 +296,7 @@ extension Home {
             if target < 100, state.lowTTlowersSens, state.autosensMax > 1 { showPercentage = true }
             if showPercentage {
                 percentageString =
-                    " \(state.computeAdjustedPercentage(halfBasalTargetValue: effectiveHBT, tempTargetValue: target))%"
+                    " \(Int(TempTargetCalculations.computeAdjustedPercentage(halfBasalTarget: effectiveHBT, target: target, autosensMax: state.autosensMax)))%"
             }
             target = state.units == .mmolL ? target.asMmolL : target
             let targetString = target == 0 ? "" : (fetchedTargetFormatter.string(from: target as NSNumber) ?? "") + " " +

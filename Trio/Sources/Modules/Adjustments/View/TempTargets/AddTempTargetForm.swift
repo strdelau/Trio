@@ -103,10 +103,17 @@ struct AddTempTargetForm: View {
                 .onChange(of: state.tempTargetTarget) {
                     // when first setting a custom sensitivity the settings HBT is used and therefore we calculate the sensitivity
                     if state.halfBasalTarget == state.settingHalfBasalTarget {
-                        state.percentage = state.computeAdjustedPercentage()
+                        state.percentage = TempTargetCalculations.computeAdjustedPercentage(
+                            halfBasalTarget: state.halfBasalTarget,
+                            target: state.tempTargetTarget,
+                            autosensMax: state.autosensMax
+                        )
                     } else {
                         // else when changing target value and the already adjusted HBT is used, keep the sensitivity and adjust the HBT instead
-                        state.halfBasalTarget = Decimal(state.computeHalfBasalTarget())
+                        state.halfBasalTarget = Decimal(TempTargetCalculations.computeHalfBasalTarget(
+                            target: state.tempTargetTarget,
+                            percentage: state.percentage
+                        ))
                     }
                 }
             }
@@ -125,7 +132,11 @@ struct AddTempTargetForm: View {
                                 .onChange(of: tempTargetSensitivityAdjustmentType) { _, newValue in
                                     if newValue == .standard {
                                         state.halfBasalTarget = state.settingHalfBasalTarget
-                                        state.percentage = state.computeAdjustedPercentage()
+                                        state.percentage = TempTargetCalculations.computeAdjustedPercentage(
+                                            halfBasalTarget: state.halfBasalTarget,
+                                            target: state.tempTargetTarget,
+                                            autosensMax: state.autosensMax
+                                        )
                                     }
                                 }
                             }
@@ -147,7 +158,10 @@ struct AddTempTargetForm: View {
                                     Text("\(state.computeSliderHigh(), specifier: "%.0f")%")
                                 } onEditingChanged: { editing in
                                     isUsingSlider = editing
-                                    state.halfBasalTarget = Decimal(state.computeHalfBasalTarget())
+                                    state.halfBasalTarget = Decimal(TempTargetCalculations.computeHalfBasalTarget(
+                                        target: state.tempTargetTarget,
+                                        percentage: state.percentage
+                                    ))
                                 }
                                 .listRowSeparator(.hidden, edges: .top)
                             }

@@ -157,7 +157,11 @@ extension Adjustments {
             highTTraisesSens = settingsManager.preferences.highTemptargetRaisesSensitivity
             isExerciseModeActive = settingsManager.preferences.exerciseMode
             lowTTlowersSens = settingsManager.preferences.lowTemptargetLowersSensitivity
-            percentage = computeAdjustedPercentage()
+            percentage = TempTargetCalculations.computeAdjustedPercentage(
+                halfBasalTarget: halfBasalTarget,
+                target: tempTargetTarget,
+                autosensMax: autosensMax
+            )
             Task {
                 await getCurrentGlucoseTarget()
             }
@@ -267,7 +271,11 @@ extension Adjustments.StateModel: SettingsObserver, PreferencesObserver {
         highTTraisesSens = settingsManager.preferences.highTemptargetRaisesSensitivity
         isExerciseModeActive = settingsManager.preferences.exerciseMode
         lowTTlowersSens = settingsManager.preferences.lowTemptargetLowersSensitivity
-        percentage = computeAdjustedPercentage()
+        percentage = TempTargetCalculations.computeAdjustedPercentage(
+            halfBasalTarget: halfBasalTarget,
+            target: tempTargetTarget,
+            autosensMax: autosensMax
+        )
         Task {
             await getCurrentGlucoseTarget()
         }

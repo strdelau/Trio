@@ -384,19 +384,6 @@ extension Adjustments.StateModel {
 
     // MARK: - Calculations
 
-    /// Computes the half-basal target based on the current settings.
-    func computeHalfBasalTarget(
-        usingTarget initialTarget: Decimal? = nil,
-        usingPercentage initialPercentage: Double? = nil
-    ) -> Double {
-        let tempTargetValue: Decimal = initialTarget ?? tempTargetTarget
-        let adjustmentPercentage = initialPercentage ?? percentage
-        return TempTargetCalculations.computeHalfBasalTarget(
-            target: tempTargetValue,
-            percentage: adjustmentPercentage
-        )
-    }
-
     /// Determines if sensitivity adjustment is enabled based on target.
     func isAdjustSensEnabled(usingTarget initialTarget: Decimal? = nil) -> Bool {
         let target = initialTarget ?? tempTargetTarget
@@ -421,21 +408,6 @@ extension Adjustments.StateModel {
         let maxSens = calcTarget > TempTargetCalculations.normalTarget ? 95 : Double(autosensMax * 100)
         return maxSens
     }
-
-    /// Computes the adjusted percentage for the slider.
-    func computeAdjustedPercentage(
-        usingHBT initialHalfBasalTarget: Decimal? = nil,
-        usingTarget initialTarget: Decimal? = nil
-    ) -> Double {
-        let halfBasalTargetValue = initialHalfBasalTarget ?? halfBasalTarget
-        let calcTarget = initialTarget ?? tempTargetTarget
-        return TempTargetCalculations.computeAdjustedPercentage(
-            halfBasalTarget: halfBasalTargetValue,
-            target: calcTarget,
-            autosensMax: autosensMax
-        )
-    }
-
 }
 
 enum TempTargetSensitivityAdjustmentType: String, CaseIterable {
