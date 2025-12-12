@@ -90,11 +90,6 @@ struct EditTempTargetForm: View {
             }
             .onAppear {
                 // Determine if this is a custom slider adjustment or a standard with auto-adjustment
-                debug(
-                    .default,
-                    "checkStandardTT onAppear: halfBasalTarget=\(String(describing: halfBasalTarget)), settingHBT=\(state.settingHalfBasalTarget), percentage=\(percentage), target=\(target)"
-                )
-
                 if halfBasalTarget != nil,
                    halfBasalTarget != state.settingHalfBasalTarget
                 {
@@ -107,22 +102,9 @@ struct EditTempTargetForm: View {
                         autosensMax: state.autosensMax
                     ) != nil
 
-                    debug(
-                        .default,
-                        "checkStandardTT onAppear: isAutoAdjustedStandard=\(isAutoAdjustedStandard)"
-                    )
-
                     if !isAutoAdjustedStandard {
                         tempTargetSensitivityAdjustmentType = .slider
-                        debug(.default, "checkStandardTT onAppear: Setting adjustment type to .slider")
-                    } else {
-                        debug(.default, "checkStandardTT onAppear: Keeping adjustment type as .standard (auto-adjusted)")
                     }
-                } else {
-                    debug(
-                        .default,
-                        "checkStandardTT onAppear: Keeping adjustment type as .standard (HBT is nil or matches settings)"
-                    )
                 }
             }
             .sheet(isPresented: $state.isHelpSheetPresented) {
@@ -346,6 +328,10 @@ struct EditTempTargetForm: View {
             Spacer()
             Button(action: {
                 saveChanges()
+                debug(
+                    .default,
+                    "TempTarget: target=\(target), HBT=\(String(describing: halfBasalTarget)), percentage=\(Int(percentage))%, adjustmentType=\(tempTargetSensitivityAdjustmentType.rawValue)"
+                )
                 do {
                     guard let moc = tempTarget.managedObjectContext else { return }
                     guard moc.hasChanges else { return }

@@ -138,6 +138,11 @@ extension Adjustments.StateModel {
         let date = self.date
         guard date > Date() else { return }
 
+        let adjustmentType = halfBasalTarget == settingHalfBasalTarget ? "Standard" : "Custom"
+        debug(
+            .default,
+            "TempTarget: target=\(tempTargetTarget), HBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
+        )
         let tempTarget = TempTarget(
             name: tempTargetName,
             createdAt: date,
@@ -203,6 +208,11 @@ extension Adjustments.StateModel {
     /// Saves a custom Temp Target and disables existing ones.
     func saveCustomTempTarget() async throws {
         await disableAllActiveTempTargets(createTempTargetRunEntry: true)
+        let adjustmentType = halfBasalTarget == settingHalfBasalTarget ? "Standard" : "Custom"
+        debug(
+            .default,
+            "TempTarget: target=\(tempTargetTarget), HBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
+        )
         let tempTarget = TempTarget(
             name: tempTargetName,
             /// We don't need to use the state var date here as we are using a different function for scheduled Temp Targets 'saveScheduledTempTarget()'
@@ -225,6 +235,11 @@ extension Adjustments.StateModel {
 
     /// Creates a new Temp Target preset.
     func saveTempTargetPreset() async throws {
+        let adjustmentType = halfBasalTarget == settingHalfBasalTarget ? "Standard" : "Custom"
+        debug(
+            .default,
+            "TempTarget: target=\(tempTargetTarget), HBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
+        )
         let tempTarget = TempTarget(
             name: tempTargetName,
             createdAt: Date(),

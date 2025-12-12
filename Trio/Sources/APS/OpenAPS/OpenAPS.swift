@@ -549,9 +549,14 @@ final class OpenAPS {
 
                 if let effectiveHBT, effectiveHBT != defaultHalfBasalTarget {
                     adjustedPreferences.halfBasalExerciseTarget = effectiveHBT
+                    let percentage = Int(TempTargetCalculations.computeAdjustedPercentage(
+                        halfBasalTarget: effectiveHBT,
+                        target: targetValue,
+                        autosensMax: preferences.autosensMax
+                    ))
                     debug(
                         .openAPS,
-                        "checkStandardTT: Updated halfBasalExerciseTarget to \(effectiveHBT) for target \(targetValue) (stored HBT: \(String(describing: activeTempTarget.halfBasalTarget?.decimalValue)), settings HBT: \(defaultHalfBasalTarget))"
+                        "TempTarget: target=\(targetValue), effectiveHBT=\(effectiveHBT), percentage=\(percentage)%, adjustmentType=Custom"
                     )
                 }
             }
