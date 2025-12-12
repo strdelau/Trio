@@ -534,7 +534,7 @@ final class OpenAPS {
 
         // Check for active Temp Targets and adjust HBT if necessary
         try await context.perform {
-            // Check if a Temp Target is active
+            // Check if a Temp Target is active and check HBT differs from setting and adjust
             if let activeTempTarget = try self.fetchActiveTempTargets().first,
                activeTempTarget.enabled,
                let targetValue = activeTempTarget.target?.decimalValue
