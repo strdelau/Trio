@@ -541,7 +541,7 @@ final class OpenAPS {
             {
                 // Compute effective HBT - handles both custom HBT and standard TT (where HBT might need adjustment)
                 let effectiveHBT = TempTargetCalculations.computeEffectiveHBT(
-                    storedHBT: activeTempTarget.halfBasalTarget?.decimalValue,
+                    tempTargetHalfBasalTarget: activeTempTarget.halfBasalTarget?.decimalValue,
                     settingHalfBasalTarget: defaultHalfBasalTarget,
                     target: targetValue,
                     autosensMax: preferences.autosensMax

@@ -286,7 +286,7 @@ extension Home {
             var target = (latestTempTarget.target ?? 100) as Decimal
             // Use TempTargetCalculations to get effective HBT (handles both custom and auto-adjusted standard TT)
             let effectiveHBT = TempTargetCalculations.computeEffectiveHBT(
-                storedHBT: latestTempTarget.halfBasalTarget?.decimalValue,
+                tempTargetHalfBasalTarget: latestTempTarget.halfBasalTarget?.decimalValue,
                 settingHalfBasalTarget: state.settingHalfBasalTarget,
                 target: target,
                 autosensMax: state.autosensMax

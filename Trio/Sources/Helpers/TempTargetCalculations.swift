@@ -104,20 +104,20 @@ enum TempTargetCalculations {
     /// If the stored HBT is nil (standard TT) and using settings HBT would result in < 15%,
     /// calculates an adjusted HBT. Otherwise returns the stored HBT or nil.
     /// - Parameters:
-    ///   - storedHBT: The HBT stored with the TempTarget (nil for standard TT)
+    ///   - tempTargetHalfBasalTarget: The HBT stored with the TempTarget (nil for standard TT)
     ///   - settingHalfBasalTarget: The HBT from user settings
     ///   - target: The target glucose value
     ///   - autosensMax: The maximum autosens multiplier from settings
     /// - Returns: The effective HBT to use, or nil if settings HBT should be used as-is
     static func computeEffectiveHBT(
-        storedHBT: Decimal?,
+        tempTargetHalfBasalTarget: Decimal?,
         settingHalfBasalTarget: Decimal,
         target: Decimal,
         autosensMax: Decimal
     ) -> Decimal? {
         // If TempTarget has a stored HBT, use it directly
-        if let storedHBT {
-            return storedHBT
+        if let tempTargetHalfBasalTarget {
+            return tempTargetHalfBasalTarget
         }
 
         // For standard TT (no stored HBT), check if we need to adjust
