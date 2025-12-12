@@ -330,7 +330,7 @@ struct EditTempTargetForm: View {
                 saveChanges()
                 debug(
                     .default,
-                    "TempTarget: target=\(target), HBT=\(String(describing: halfBasalTarget)), percentage=\(Int(percentage))%, adjustmentType=\(tempTargetSensitivityAdjustmentType.rawValue)"
+                    "TempTarget: target=\(target), HBT=\(state.settingHalfBasalTarget), effectiveHBT=\(String(describing: halfBasalTarget)), percentage=\(Int(percentage))%, adjustmentType=\(tempTargetSensitivityAdjustmentType.rawValue)"
                 )
                 do {
                     guard let moc = tempTarget.managedObjectContext else { return }

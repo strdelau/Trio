@@ -556,7 +556,7 @@ final class OpenAPS {
                     ))
                     debug(
                         .openAPS,
-                        "TempTarget: target=\(targetValue), effectiveHBT=\(effectiveHBT), percentage=\(percentage)%, adjustmentType=Custom"
+                        "TempTarget: target=\(targetValue), HBT=\(defaultHalfBasalTarget), effectiveHBT=\(effectiveHBT), percentage=\(percentage)%, adjustmentType=Custom"
                     )
                 }
             }

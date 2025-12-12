@@ -141,7 +141,7 @@ extension Adjustments.StateModel {
         let adjustmentType = halfBasalTarget == settingHalfBasalTarget ? "Standard" : "Custom"
         debug(
             .default,
-            "TempTarget: target=\(tempTargetTarget), HBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
+            "TempTarget: target=\(tempTargetTarget), HBT=\(settingHalfBasalTarget), effectiveHBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
         )
         let tempTarget = TempTarget(
             name: tempTargetName,
@@ -211,7 +211,7 @@ extension Adjustments.StateModel {
         let adjustmentType = halfBasalTarget == settingHalfBasalTarget ? "Standard" : "Custom"
         debug(
             .default,
-            "TempTarget: target=\(tempTargetTarget), HBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
+            "TempTarget: target=\(tempTargetTarget), HBT=\(settingHalfBasalTarget), effectiveHBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
         )
         let tempTarget = TempTarget(
             name: tempTargetName,
@@ -238,7 +238,7 @@ extension Adjustments.StateModel {
         let adjustmentType = halfBasalTarget == settingHalfBasalTarget ? "Standard" : "Custom"
         debug(
             .default,
-            "TempTarget: target=\(tempTargetTarget), HBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
+            "TempTarget: target=\(tempTargetTarget), HBT=\(settingHalfBasalTarget), effectiveHBT=\(halfBasalTarget), percentage=\(Int(percentage))%, adjustmentType=\(adjustmentType)"
         )
         let tempTarget = TempTarget(
             name: tempTargetName,
