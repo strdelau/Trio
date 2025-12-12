@@ -95,17 +95,17 @@ struct EditTempTargetForm: View {
                    halfBasalTarget != state.settingHalfBasalTarget
                 {
                     // Check if this was an auto-adjusted standard TT:
-                    // If computeStandardPercentageAndHBT returns a non-nil HBT, it means settings HBT would produce <= 15%
-                    let (_, standardAdjustedHBT) = TempTargetCalculations.computeStandardPercentageAndHBT(
+                    // If computeEffectiveHBT with nil stored HBT returns non-nil, settings HBT would produce <= 15%
+                    let isAutoAdjustedStandard = TempTargetCalculations.computeEffectiveHBT(
+                        tempTargetHalfBasalTarget: nil,
                         settingHalfBasalTarget: state.settingHalfBasalTarget,
                         target: target,
                         autosensMax: state.autosensMax
-                    )
-                    let isAutoAdjustedStandard = standardAdjustedHBT != nil
+                    ) != nil
 
                     debug(
                         .default,
-                        "checkStandardTT onAppear: isAutoAdjustedStandard=\(isAutoAdjustedStandard), standardAdjustedHBT=\(String(describing: standardAdjustedHBT))"
+                        "checkStandardTT onAppear: isAutoAdjustedStandard=\(isAutoAdjustedStandard)"
                     )
 
                     if !isAutoAdjustedStandard {

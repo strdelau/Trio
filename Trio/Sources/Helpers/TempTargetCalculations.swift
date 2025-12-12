@@ -64,38 +64,8 @@ enum TempTargetCalculations {
         return round(Double(halfBasalTargetValue))
     }
 
-    /// Checks if the settings HBT would result in a percentage at or below the minimum,
-    /// and if so, returns an adjusted HBT that yields exactly the minimum percentage.
-    /// - Parameters:
-    ///   - settingHalfBasalTarget: The HBT from user settings
-    ///   - target: The target glucose value
-    ///   - autosensMax: The maximum autosens multiplier from settings
-    /// - Returns: A tuple containing (percentage, halfBasalTarget) where halfBasalTarget is nil if settings HBT is OK
-    static func computeStandardPercentageAndHBT(
-        settingHalfBasalTarget: Decimal,
-        target: Decimal,
-        autosensMax: Decimal
-    ) -> (percentage: Double, halfBasalTarget: Decimal?) {
-        let rawPercentage = computeRawPercentage(
-            halfBasalTarget: settingHalfBasalTarget,
-            target: target,
-            autosensMax: autosensMax
-        )
-
-        // If raw percentage is at or below minimum, we need to calculate an adjusted HBT
-        if rawPercentage <= minSensitivityRatioTT {
-            let adjustedHBT = Decimal(computeHalfBasalTarget(
-                target: target,
-                percentage: minSensitivityRatioTT
-            ))
-            return (minSensitivityRatioTT, adjustedHBT)
-        } else {
-            return (rawPercentage, nil)
-        }
-    }
-
     /// Determines the effective HBT to use for a TempTarget.
-    /// If the stored HBT is nil (standard TT) and using settings HBT would result in < 15%,
+    /// If the stored HBT is nil (standard TT) and using settings HBT would result in <= 15%,
     /// calculates an adjusted HBT. Otherwise returns the stored HBT or nil.
     /// - Parameters:
     ///   - tempTargetHalfBasalTarget: The HBT stored with the TempTarget (nil for standard TT)
@@ -114,13 +84,21 @@ enum TempTargetCalculations {
             return tempTargetHalfBasalTarget
         }
 
-        // For standard TT (no stored HBT), check if we need to adjust
-        let (_, adjustedHBT) = computeStandardPercentageAndHBT(
-            settingHalfBasalTarget: settingHalfBasalTarget,
+        // For standard TT (no stored HBT), check if settings HBT would result in <= minimum
+        let rawPercentage = computeRawPercentage(
+            halfBasalTarget: settingHalfBasalTarget,
             target: target,
             autosensMax: autosensMax
         )
 
-        return adjustedHBT
+        // If raw percentage is at or below minimum, calculate an adjusted HBT
+        if rawPercentage <= minSensitivityRatioTT {
+            return Decimal(computeHalfBasalTarget(
+                target: target,
+                percentage: minSensitivityRatioTT
+            ))
+        }
+
+        return nil
     }
 }
