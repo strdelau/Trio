@@ -9,25 +9,6 @@ enum TempTargetCalculations {
     /// The normal target glucose value used as reference (100 mg/dL)
     static let normalTarget: Decimal = 100
 
-    /// Computes the raw (unclamped) adjusted percentage for a given HBT and target.
-    /// - Parameters:
-    ///   - halfBasalTarget: The half basal target value
-    ///   - target: The target glucose value
-    ///   - autosensMax: The maximum autosens multiplier from settings
-    /// - Returns: The raw percentage (not clamped to minSensitivityRatioTT)
-    static func computeRawAdjustedPercentage(
-        halfBasalTarget: Decimal,
-        target: Decimal,
-        autosensMax: Decimal
-    ) -> Double {
-        let deviationFromNormal = halfBasalTarget - normalTarget
-        let adjustmentFactor = deviationFromNormal + (target - normalTarget)
-        let adjustmentRatio: Decimal = (deviationFromNormal * adjustmentFactor <= 0)
-            ? autosensMax
-            : deviationFromNormal / adjustmentFactor
-        return Double(min(adjustmentRatio, autosensMax) * 100)
-    }
-
     /// Computes the adjusted percentage (clamped to minSensitivityRatioTT).
     /// - Parameters:
     ///   - halfBasalTarget: The half basal target value
@@ -39,12 +20,26 @@ enum TempTargetCalculations {
         target: Decimal,
         autosensMax: Decimal
     ) -> Double {
-        let rawPercentage = computeRawAdjustedPercentage(
+        let rawPercentage = computeRawPercentage(
             halfBasalTarget: halfBasalTarget,
             target: target,
             autosensMax: autosensMax
         )
-        return rawPercentage < minSensitivityRatioTT ? minSensitivityRatioTT : rawPercentage
+        return max(rawPercentage, minSensitivityRatioTT)
+    }
+
+    /// Computes the raw (unclamped) percentage - private helper.
+    private static func computeRawPercentage(
+        halfBasalTarget: Decimal,
+        target: Decimal,
+        autosensMax: Decimal
+    ) -> Double {
+        let deviationFromNormal = halfBasalTarget - normalTarget
+        let adjustmentFactor = deviationFromNormal + (target - normalTarget)
+        let adjustmentRatio: Decimal = (deviationFromNormal * adjustmentFactor <= 0)
+            ? autosensMax
+            : deviationFromNormal / adjustmentFactor
+        return Double(min(adjustmentRatio, autosensMax) * 100)
     }
 
     /// Computes the half-basal target needed to achieve a given percentage.
@@ -81,12 +76,11 @@ enum TempTargetCalculations {
         target: Decimal,
         autosensMax: Decimal
     ) -> (percentage: Double, halfBasalTarget: Decimal?) {
-        let rawPercentage = computeRawAdjustedPercentage(
+        let rawPercentage = computeRawPercentage(
             halfBasalTarget: settingHalfBasalTarget,
             target: target,
             autosensMax: autosensMax
         )
-        let clampedPercentage = rawPercentage < minSensitivityRatioTT ? minSensitivityRatioTT : rawPercentage
 
         // If raw percentage is at or below minimum, we need to calculate an adjusted HBT
         if rawPercentage <= minSensitivityRatioTT {
@@ -96,7 +90,7 @@ enum TempTargetCalculations {
             ))
             return (minSensitivityRatioTT, adjustedHBT)
         } else {
-            return (clampedPercentage, nil)
+            return (rawPercentage, nil)
         }
     }
 

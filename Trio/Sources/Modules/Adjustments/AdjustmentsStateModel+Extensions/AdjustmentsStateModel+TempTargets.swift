@@ -422,19 +422,6 @@ extension Adjustments.StateModel {
         return maxSens
     }
 
-    /// Computes the raw (unclamped) adjusted percentage for a given HBT and target.
-    /// This is used to check if the percentage would be below minSensitivityRatioTT.
-    func computeRawAdjustedPercentage(
-        usingHBT halfBasalTargetValue: Decimal,
-        usingTarget calcTarget: Decimal
-    ) -> Double {
-        TempTargetCalculations.computeRawAdjustedPercentage(
-            halfBasalTarget: halfBasalTargetValue,
-            target: calcTarget,
-            autosensMax: autosensMax
-        )
-    }
-
     /// Computes the adjusted percentage for the slider.
     func computeAdjustedPercentage(
         usingHBT initialHalfBasalTarget: Decimal? = nil,
@@ -461,29 +448,10 @@ extension Adjustments.StateModel {
             autosensMax: autosensMax
         )
 
-        // Use raw percentage for debug logging
-        let rawPercentage = TempTargetCalculations.computeRawAdjustedPercentage(
-            halfBasalTarget: settingHalfBasalTarget,
-            target: target,
-            autosensMax: autosensMax
-        )
-
         debug(
             .default,
-            "checkStandardTT: target=\(target), settingHBT=\(settingHalfBasalTarget), rawPercentage=\(rawPercentage), percentage=\(result.percentage), minSensitivityRatioTT=\(TempTargetCalculations.minSensitivityRatioTT)"
+            "checkStandardTT: target=\(target), settingHBT=\(settingHalfBasalTarget), percentage=\(result.percentage), adjustedHBT=\(String(describing: result.halfBasalTarget))"
         )
-
-        if let adjustedHBT = result.halfBasalTarget {
-            debug(
-                .default,
-                "checkStandardTT: rawPercentage <= minSensitivityRatioTT, returning adjustedHBT=\(adjustedHBT), percentage=\(result.percentage)"
-            )
-        } else {
-            debug(
-                .default,
-                "checkStandardTT: rawPercentage > minSensitivityRatioTT, returning nil HBT, percentage=\(result.percentage)"
-            )
-        }
 
         return result
     }
