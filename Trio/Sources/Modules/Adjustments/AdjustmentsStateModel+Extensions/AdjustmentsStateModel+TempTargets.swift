@@ -436,25 +436,6 @@ extension Adjustments.StateModel {
         )
     }
 
-    /// Computes the standard percentage and adjusted HBT for a given target.
-    /// If the raw percentage (using settingHalfBasalTarget) would be at or below minSensitivityRatioTT (15%),
-    /// returns an adjusted HBT that yields the minimum percentage instead.
-    /// - Parameter target: The target glucose value
-    /// - Returns: A tuple containing (percentage, halfBasalTarget) where halfBasalTarget is nil if standard HBT can be used
-    func computeStandardPercentageAndHBT(usingTarget target: Decimal) -> (percentage: Double, halfBasalTarget: Decimal?) {
-        let result = TempTargetCalculations.computeStandardPercentageAndHBT(
-            settingHalfBasalTarget: settingHalfBasalTarget,
-            target: target,
-            autosensMax: autosensMax
-        )
-
-        debug(
-            .default,
-            "checkStandardTT: target=\(target), settingHBT=\(settingHalfBasalTarget), percentage=\(result.percentage), adjustedHBT=\(String(describing: result.halfBasalTarget))"
-        )
-
-        return result
-    }
 }
 
 enum TempTargetSensitivityAdjustmentType: String, CaseIterable {
