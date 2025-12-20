@@ -10,6 +10,7 @@ import Swinject
 protocol GlucoseStorage {
     var updatePublisher: AnyPublisher<Void, Never> { get }
     func storeGlucose(_ glucose: [BloodGlucose]) async throws
+    func backfillGlucose(_ glucose: [BloodGlucose]) async throws
     func addManualGlucose(glucose: Int)
     func isGlucoseDataFresh(_ glucoseDate: Date?) -> Bool
     func syncDate() -> Date
@@ -61,10 +62,53 @@ final class BaseGlucoseStorage: GlucoseStorage, Injectable {
         return formatter
     }
 
+    /// Backfills glucose values and stores in CoreData
+    ///
+    /// CGM managers will sometimes backfill glucose readings. To handle these backfilled values
+    /// correctly, we need some logic to handle a few cases:
+    ///  - _Not_ adding back previously deleted glucose
+    ///  - Avoiding duplicate values for the same reading
+    ///  - Avoiding overlapping glucose readings when switching sources
+    ///  Of these corner cases, overlapping glucose readings when switching sources is both
+    ///  the most challenging and most rare since it would happen if wearing two devices and
+    ///  switching or moving from direct glucose handling to xdrip. It's not worth the complexity
+    ///  to deal with source switching perfectly, so instead we will backfill glucose if and only if
+    ///  it isn't within 3.5 minutes of an existing glucose reading, which is simple but not perfect.
+    ///  But since this is a corner case that really shouldn't happen often, it's good enough.
+    func backfillGlucose(_ glucose: [BloodGlucose]) async throws {
+        try await context.perform {
+            // remove already deleted glucose values
+            let withoutDeletedGlucose = self.filterGlucoseValues(
+                glucose,
+                fetchRequest: DeletedGlucoseStored.fetchRequest(),
+                timeBuffer: 1
+            )
+
+            // check for a 3.5 minute difference between existing values
+            let filteredGlucose = self.filterGlucoseValues(
+                withoutDeletedGlucose,
+                fetchRequest: GlucoseStored.fetchRequest(),
+                timeBuffer: 3.5 * 60
+            )
+
+            guard !filteredGlucose.isEmpty else { return }
+
+            do {
+                // Store glucose values in Core Data
+                try self.storeGlucoseInCoreData(filteredGlucose)
+            } catch {
+                throw CoreDataError.creationError(
+                    function: #function,
+                    file: #fileID
+                )
+            }
+        }
+    }
+
     func storeGlucose(_ glucose: [BloodGlucose]) async throws {
         try await context.perform {
             // Get new glucose values that don't exist yet
-            let newGlucose = self.filterNewGlucoseValues(glucose)
+            let newGlucose = self.filterGlucoseValues(glucose, fetchRequest: GlucoseStored.fetchRequest(), timeBuffer: 1)
             guard !newGlucose.isEmpty else { return }
 
             do {
@@ -82,25 +126,49 @@ final class BaseGlucoseStorage: GlucoseStorage, Injectable {
         }
     }
 
-    private func filterNewGlucoseValues(_ glucose: [BloodGlucose]) -> [BloodGlucose] {
-        let datesToCheck: Set<Date?> = Set(glucose.compactMap { $0.dateString as Date? })
-        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = GlucoseStored.fetchRequest()
+    /// filter out duplicate CGM readings using matching timestamps
+    ///
+    /// This function will fetch dates from the `fetchRequest` and remove any glucose
+    /// values that are within `timeBuffer` of the fetched dates. This logic is useful for
+    /// deduplication checks or removing deleted CGM values from a list of backfilled readings.
+    private func filterGlucoseValues(
+        _ glucose: [BloodGlucose],
+        fetchRequest: NSFetchRequest<NSFetchRequestResult>,
+        timeBuffer: TimeInterval
+    ) -> [BloodGlucose] {
+        let datesToCheck = glucose.map(\.dateString).sorted()
+        guard let firstDate = datesToCheck.first.map({ $0.addingTimeInterval(-timeBuffer) }),
+              let lastDate = datesToCheck.last.map({ $0.addingTimeInterval(timeBuffer) })
+        else {
+            return glucose
+        }
         fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "date IN %@", datesToCheck),
-            NSPredicate.predicateForOneDayAgo
+            NSPredicate(format: "date >= %@", firstDate as NSDate),
+            NSPredicate(format: "date <= %@", lastDate as NSDate)
         ])
         fetchRequest.propertiesToFetch = ["date"]
         fetchRequest.resultType = .dictionaryResultType
 
-        var existingDates = Set<Date>()
+        var existingDates = [Date]()
         do {
             let results = try context.fetch(fetchRequest) as? [NSDictionary]
-            existingDates = Set(results?.compactMap({ $0["date"] as? Date }) ?? [])
+            existingDates = results?.compactMap({ $0["date"] as? Date }) ?? []
         } catch {
             debugPrint("Failed to fetch existing glucose dates: \(error)")
         }
 
-        return glucose.filter { !existingDates.contains($0.dateString) }
+        // This is an inefficient filtering algorithm, but I'm assuming that the
+        // time spans are short and that duplicates are rare, so in the common
+        // case there won't be any existing dates.
+        return glucose.filter { glucose in
+            for existingDate in existingDates {
+                let difference = abs(existingDate.timeIntervalSince(glucose.dateString))
+                if difference <= timeBuffer {
+                    return false
+                }
+            }
+            return true
+        }
     }
 
     private func storeGlucoseInCoreData(_ glucose: [BloodGlucose]) throws {
@@ -559,6 +627,14 @@ final class BaseGlucoseStorage: GlucoseStorage, Injectable {
                 guard let glucoseToDelete = result else {
                     debugPrint("Data Table State: \(#function) \(DebuggingIdentifiers.failed) glucose not found in core data")
                     return
+                }
+
+                // Create a new DeletedGlucoseStored object and copy the properties
+                if let date = glucoseToDelete.date {
+                    let deletedEntry = DeletedGlucoseStored(context: taskContext)
+                    deletedEntry.date = date
+                    deletedEntry.glucose = glucoseToDelete.glucose
+                    deletedEntry.isManualGlucoseEntry = glucoseToDelete.isManual
                 }
 
                 taskContext.delete(glucoseToDelete)
