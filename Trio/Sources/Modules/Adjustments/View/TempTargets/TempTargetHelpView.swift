@@ -30,16 +30,16 @@ struct TempTargetHelpView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(
-                            "Sensitivity adjustments from Temp Targets have a hard-coded minimum of 15%. This means even very high Temp Targets cannot reduce insulin delivery below 15% of normal."
+                            "Sensitivity changes from Temp Targets have a built-in minimum of 15%. Even very high Temp Targets cannot reduce insulin delivery below 15% of normal."
                         )
                         Text(
-                            "This 15% floor is a safety limit inherited from oref (OpenAPS reference design) and AndroidAPS. It prevents Temp Targets from reducing insulin to dangerously low levels."
+                            "This 15% minimum is a safety limit taken from oref (OpenAPS reference design) and AndroidAPS. It helps prevent insulin delivery from dropping to unsafe levels."
                         )
                         Text(
-                            "Note: Autosens Min and Autosens Max settings do not apply symmetrically to Temp Target sensitivity adjustments. Autosens Max limits how much sensitivity can be decreased (more insulin), but Autosens Min does not override the 15% floor for increased sensitivity (less insulin)."
+                            "Important: Autosens Min and Autosens Max do not affect Temp Targets in the same way. Autosens Max limits how much insulin can be increased, but Autosens Min does not remove the 15% minimum when insulin is reduced."
                         )
                         Text(
-                            "This asymmetry exists because reducing insulin delivery during exercise, normally realized by using high Temp Targets, typically requires a higher insulin reduction than what autosens would identify in a regular dayly routine."
+                            "This difference exists because situations like exercise often need a much larger insulin reduction than Autosens would detect during a normal daily routine."
                         )
                     }
                 } header: {
