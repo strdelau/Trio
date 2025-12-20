@@ -8,13 +8,13 @@ protocol AlertObserver {
 }
 
 protocol AlertHistoryStorage {
-    func storeAlert(_ alerts: AlertEntry)
+    func addAlert(_ alert: AlertEntry)
+    func acknowledgeAlert(_ issuedAt: Date, _ error: String?)
+    func removeAlert(identifier: String)
+    func unacknowledgedAlertsWithinLast24Hours() -> [AlertEntry]
+    func broadcastAlertUpdates()
     func syncDate() -> Date
-    func recentNotAck() -> [AlertEntry]
-    func deleteAlert(identifier: String)
-    func ackAlert(_ alert: Date, _ error: String?)
-    func forceNotification()
-    var alertNotAck: PassthroughSubject<Bool, Never> { get }
+    var unacknowledgedAlertsPublisher: PassthroughSubject<Bool, Never> { get }
 }
 
 final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
@@ -29,7 +29,7 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
     @Injected() private var broadcaster: Broadcaster!
 
     /// Emits `true` whenever there is at least one unacknowledged alert in the last 24 hours.
-    let alertNotAck = PassthroughSubject<Bool, Never>()
+    let unacknowledgedAlertsPublisher = PassthroughSubject<Bool, Never>()
 
     private enum Keys {
         /// UserDefaults key holding the encoded `[AlertEntry]` payload.
@@ -41,7 +41,7 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
     /// Creates a new alert history storage.
     ///
     /// On initialization this performs a one-time migration from the legacy JSON file
-    /// (`OpenAPS.Monitor.alertHistory`, e.g. `"monitor/alerthistory.json"`) into UserDefaults.
+    /// (`OpenAPS.Monitor.alertHistory`, i.e.,`"monitor/alerthistory.json"`) into UserDefaults.
     /// After initialization, all reads/writes happen via UserDefaults only.
     ///
     /// - Parameters:
@@ -51,9 +51,10 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
         defaults = userDefaults
         injectServices(resolver)
 
-        migrateFromLegacyJSONIfNeeded() // FIXME: this can be removed in later releases
+        // FIXME: this can be removed in later releases
+        migrateFromLegacyJSONIfNeeded()
 
-        alertNotAck.send(recentNotAck().isNotEmpty)
+        unacknowledgedAlertsPublisher.send(unacknowledgedAlertsWithinLast24Hours().isNotEmpty)
     }
 
     /// Stores a new alert entry and notifies observers.
@@ -63,9 +64,9 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
     /// - pruned to the last 24 hours
     /// - sorted with newest first
     ///
-    /// After persisting, this updates `alertNotAck` and broadcasts the latest list to `AlertObserver`s.
+    /// After persisting, this updates `unacknowledgedAlertsPublisher` and broadcasts the latest list to `AlertObserver`s.
     /// - Parameter alert: The alert to store.
-    func storeAlert(_ alert: AlertEntry) {
+    func addAlert(_ alert: AlertEntry) {
         processQueue.sync {
             var all = loadAll()
             all.append(alert)
@@ -73,7 +74,7 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
             let uniqEvents = pruneAndSort(dedupeByIssuedDate(all))
             saveAll(uniqEvents)
 
-            alertNotAck.send(self.recentNotAck().isNotEmpty)
+            unacknowledgedAlertsPublisher.send(self.unacknowledgedAlertsWithinLast24Hours().isNotEmpty)
             broadcaster.notify(AlertObserver.self, on: processQueue) {
                 $0.AlertDidUpdate(uniqEvents)
             }
@@ -88,7 +89,7 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
     }
 
     /// Returns all unacknowledged alerts from the last 24 hours, sorted newest first.
-    func recentNotAck() -> [AlertEntry] {
+    func unacknowledgedAlertsWithinLast24Hours() -> [AlertEntry] {
         loadAll()
             .filter { $0.issuedDate.addingTimeInterval(1.days.timeInterval) > Date() && $0.acknowledgedDate == nil }
             .sorted { $0.issuedDate > $1.issuedDate }
@@ -99,14 +100,14 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
     /// If `error` is non-nil, the alert is updated with `errorMessage`.
     /// Otherwise, the alert is marked as acknowledged by setting `acknowledgedDate = Date()`.
     ///
-    /// After persisting, this updates `alertNotAck`.
+    /// After persisting, this updates `unacknowledgedAlertsPublisher`.
     /// - Parameters:
-    ///   - alert: The issued date of the alert entry to update.
+    ///   - issuedAt: The issued date of the alert entry to update.
     ///   - error: Optional error message to store instead of acknowledging.
-    func ackAlert(_ alert: Date, _ error: String?) {
+    func acknowledgeAlert(_ issuedAt: Date, _ error: String?) {
         processQueue.sync {
             var all = loadAll()
-            guard let idx = all.firstIndex(where: { $0.issuedDate == alert }) else { return }
+            guard let idx = all.firstIndex(where: { $0.issuedDate == issuedAt }) else { return }
 
             if let error {
                 all[idx].errorMessage = error
@@ -116,15 +117,15 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
 
             let cleaned = pruneAndSort(dedupeByIssuedDate(all))
             saveAll(cleaned)
-            alertNotAck.send(self.recentNotAck().isNotEmpty)
+            unacknowledgedAlertsPublisher.send(self.unacknowledgedAlertsWithinLast24Hours().isNotEmpty)
         }
     }
 
     /// Deletes an alert entry by its identifier and notifies observers.
     ///
-    /// After persisting, this updates `alertNotAck` and broadcasts the updated list.
+    /// After persisting, this updates `unacknowledgedAlertsPublisher` and broadcasts the updated list.
     /// - Parameter identifier: The `alertIdentifier` of the entry to delete.
-    func deleteAlert(identifier: String) {
+    func removeAlert(identifier: String) {
         processQueue.sync {
             var all = loadAll()
             guard let idx = all.firstIndex(where: { $0.alertIdentifier == identifier }) else { return }
@@ -134,7 +135,7 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
             let cleaned = pruneAndSort(dedupeByIssuedDate(all))
             saveAll(cleaned)
 
-            alertNotAck.send(self.recentNotAck().isNotEmpty)
+            unacknowledgedAlertsPublisher.send(self.unacknowledgedAlertsWithinLast24Hours().isNotEmpty)
             broadcaster.notify(AlertObserver.self, on: processQueue) {
                 $0.AlertDidUpdate(cleaned)
             }
@@ -143,11 +144,11 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
 
     /// Forces a broadcast of the current alert list (last 24 hours) to observers.
     ///
-    /// This does not modify the data; it only re-emits state via `alertNotAck` and `AlertObserver`.
-    func forceNotification() {
+    /// This does not modify the data; it only re-emits state via `unacknowledgedAlertsPublisher` and `AlertObserver`.
+    func broadcastAlertUpdates() {
         processQueue.sync {
             let uniqEvents = pruneAndSort(loadAll())
-            alertNotAck.send(self.recentNotAck().isNotEmpty)
+            unacknowledgedAlertsPublisher.send(self.unacknowledgedAlertsWithinLast24Hours().isNotEmpty)
             broadcaster.notify(AlertObserver.self, on: processQueue) {
                 $0.AlertDidUpdate(uniqEvents)
             }
