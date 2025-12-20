@@ -37,7 +37,7 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
                 storage.append(alert, to: file, uniqBy: \.issuedDate)
                 uniqEvents = storage.retrieve(file, as: [AlertEntry].self)?
                     .filter { $0.issuedDate.addingTimeInterval(1.days.timeInterval) > Date() }
-                    .sorted { $0.issuedDate > $1.issuedDate } ?? []
+                    .sorted { $0.issuedDate > $1.issuedDate } ?? [alert]
                 storage.save(Array(uniqEvents), as: file)
             }
             alertNotAck.send(self.recentNotAck().isNotEmpty)
