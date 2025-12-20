@@ -19,27 +19,60 @@ protocol AlertHistoryStorage {
 
 final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
     private let processQueue = DispatchQueue.markedQueue(label: "BaseAlertsStorage.processQueue")
-    @Injected() private var storage: FileStorage!
+
+    private let defaults: UserDefaults
+
+    /// Legacy JSON file storage used only for one-time migration from the historical on-disk JSON file.
+    // FIXME: this can be removed in later releases
+    @Injected() private var fileStorage: FileStorage!
+
     @Injected() private var broadcaster: Broadcaster!
 
+    /// Emits `true` whenever there is at least one unacknowledged alert in the last 24 hours.
     let alertNotAck = PassthroughSubject<Bool, Never>()
 
-    init(resolver: Resolver) {
+    private enum Keys {
+        /// UserDefaults key holding the encoded `[AlertEntry]` payload.
+        static let alertsData = "openaps.monitor.alertHistory.data"
+        /// UserDefaults key used as a one-time migration flag.
+        static let alertsMigrationDone = "openaps.monitor.alertHistory.migrated"
+    }
+
+    /// Creates a new alert history storage.
+    ///
+    /// On initialization this performs a one-time migration from the legacy JSON file
+    /// (`OpenAPS.Monitor.alertHistory`, e.g. `"monitor/alerthistory.json"`) into UserDefaults.
+    /// After initialization, all reads/writes happen via UserDefaults only.
+    ///
+    /// - Parameters:
+    ///   - resolver: Swinject resolver used for dependency injection.
+    ///   - userDefaults: The UserDefaults instance used for persistence. Defaults to `.standard`.
+    init(resolver: Resolver, userDefaults: UserDefaults = .standard) {
+        defaults = userDefaults
         injectServices(resolver)
+
+        migrateFromLegacyJSONIfNeeded() // FIXME: this can be removed in later releases
+
         alertNotAck.send(recentNotAck().isNotEmpty)
     }
 
+    /// Stores a new alert entry and notifies observers.
+    ///
+    /// The history is:
+    /// - de-duplicated by `issuedDate`
+    /// - pruned to the last 24 hours
+    /// - sorted with newest first
+    ///
+    /// After persisting, this updates `alertNotAck` and broadcasts the latest list to `AlertObserver`s.
+    /// - Parameter alert: The alert to store.
     func storeAlert(_ alert: AlertEntry) {
         processQueue.sync {
-            let file = OpenAPS.Monitor.alertHistory
-            var uniqEvents: [AlertEntry] = []
-            self.storage.transaction { storage in
-                storage.append(alert, to: file, uniqBy: \.issuedDate)
-                uniqEvents = storage.retrieve(file, as: [AlertEntry].self)?
-                    .filter { $0.issuedDate.addingTimeInterval(1.days.timeInterval) > Date() }
-                    .sorted { $0.issuedDate > $1.issuedDate } ?? [alert]
-                storage.save(Array(uniqEvents), as: file)
-            }
+            var all = loadAll()
+            all.append(alert)
+
+            let uniqEvents = pruneAndSort(dedupeByIssuedDate(all))
+            saveAll(uniqEvents)
+
             alertNotAck.send(self.recentNotAck().isNotEmpty)
             broadcaster.notify(AlertObserver.self, on: processQueue) {
                 $0.AlertDidUpdate(uniqEvents)
@@ -47,57 +80,171 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
         }
     }
 
+    /// Returns the baseline sync date used by the alert subsystem.
+    ///
+    /// This matches the previous behavior: one day ago from "now".
     func syncDate() -> Date {
         Date().addingTimeInterval(-1.days.timeInterval)
     }
 
+    /// Returns all unacknowledged alerts from the last 24 hours, sorted newest first.
     func recentNotAck() -> [AlertEntry] {
-        storage.retrieve(OpenAPS.Monitor.alertHistory, as: [AlertEntry].self)?
+        loadAll()
             .filter { $0.issuedDate.addingTimeInterval(1.days.timeInterval) > Date() && $0.acknowledgedDate == nil }
-            .sorted { $0.issuedDate > $1.issuedDate } ?? []
+            .sorted { $0.issuedDate > $1.issuedDate }
     }
 
+    /// Acknowledges an alert (by issued date), or stores an error for it.
+    ///
+    /// If `error` is non-nil, the alert is updated with `errorMessage`.
+    /// Otherwise, the alert is marked as acknowledged by setting `acknowledgedDate = Date()`.
+    ///
+    /// After persisting, this updates `alertNotAck`.
+    /// - Parameters:
+    ///   - alert: The issued date of the alert entry to update.
+    ///   - error: Optional error message to store instead of acknowledging.
     func ackAlert(_ alert: Date, _ error: String?) {
         processQueue.sync {
-            var allValues = storage.retrieve(OpenAPS.Monitor.alertHistory, as: [AlertEntry].self) ?? []
-            guard let entryIndex = allValues.firstIndex(where: { $0.issuedDate == alert }) else {
-                return
-            }
+            var all = loadAll()
+            guard let idx = all.firstIndex(where: { $0.issuedDate == alert }) else { return }
 
             if let error {
-                allValues[entryIndex].errorMessage = error
+                all[idx].errorMessage = error
             } else {
-                allValues[entryIndex].acknowledgedDate = Date()
+                all[idx].acknowledgedDate = Date()
             }
-            storage.save(allValues, as: OpenAPS.Monitor.alertHistory)
+
+            let cleaned = pruneAndSort(dedupeByIssuedDate(all))
+            saveAll(cleaned)
             alertNotAck.send(self.recentNotAck().isNotEmpty)
         }
     }
 
+    /// Deletes an alert entry by its identifier and notifies observers.
+    ///
+    /// After persisting, this updates `alertNotAck` and broadcasts the updated list.
+    /// - Parameter identifier: The `alertIdentifier` of the entry to delete.
     func deleteAlert(identifier: String) {
         processQueue.sync {
-            var allValues = storage.retrieve(OpenAPS.Monitor.alertHistory, as: [AlertEntry].self) ?? []
-            guard let entryIndex = allValues.firstIndex(where: { $0.alertIdentifier == identifier }) else {
-                return
-            }
-            allValues.remove(at: entryIndex)
-            storage.save(allValues, as: OpenAPS.Monitor.alertHistory)
+            var all = loadAll()
+            guard let idx = all.firstIndex(where: { $0.alertIdentifier == identifier }) else { return }
+
+            all.remove(at: idx)
+
+            let cleaned = pruneAndSort(dedupeByIssuedDate(all))
+            saveAll(cleaned)
+
             alertNotAck.send(self.recentNotAck().isNotEmpty)
             broadcaster.notify(AlertObserver.self, on: processQueue) {
-                $0.AlertDidUpdate(allValues)
+                $0.AlertDidUpdate(cleaned)
             }
         }
     }
 
+    /// Forces a broadcast of the current alert list (last 24 hours) to observers.
+    ///
+    /// This does not modify the data; it only re-emits state via `alertNotAck` and `AlertObserver`.
     func forceNotification() {
         processQueue.sync {
-            let uniqEvents = storage.retrieve(OpenAPS.Monitor.alertHistory, as: [AlertEntry].self)?
-                .filter { $0.issuedDate.addingTimeInterval(1.days.timeInterval) > Date() }
-                .sorted { $0.issuedDate > $1.issuedDate } ?? []
+            let uniqEvents = pruneAndSort(loadAll())
             alertNotAck.send(self.recentNotAck().isNotEmpty)
             broadcaster.notify(AlertObserver.self, on: processQueue) {
                 $0.AlertDidUpdate(uniqEvents)
             }
         }
+    }
+
+    // MARK: - Migration
+
+    /// Migrates alert history from the legacy on-disk JSON file into UserDefaults.
+    ///
+    /// Migration behavior:
+    /// - Runs at most once per install (guarded by `Keys.alertsMigrationDone`).
+    /// - If the new UserDefaults value already exists, migration is considered complete.
+    /// - If legacy alerts exist, they are normalized (dedupe/prune/sort) and stored in UserDefaults.
+    /// - After a successful migration, the legacy file is removed to avoid future drift.
+    private func migrateFromLegacyJSONIfNeeded() { // FIXME: this can be removed in later releases
+        processQueue.sync {
+            // Avoid repeated disk reads forever
+            if defaults.bool(forKey: Keys.alertsMigrationDone) { return }
+
+            // If new store already has data, consider migration done
+            if defaults.data(forKey: Keys.alertsData) != nil {
+                defaults.set(true, forKey: Keys.alertsMigrationDone)
+                return
+            }
+
+            // Read legacy file ("monitor/alerthistory.json") via existing FileStorage
+            let legacyJsonAlerts = fileStorage.retrieve(OpenAPS.Monitor.alertHistory, as: [AlertEntry].self) ?? []
+            guard legacyJsonAlerts.isNotEmpty else {
+                defaults.set(true, forKey: Keys.alertsMigrationDone)
+                return
+            }
+
+            // Normalize before persisting
+            let migrated = pruneAndSort(dedupeByIssuedDate(legacyJsonAlerts))
+            saveAll(migrated)
+
+            // Mark complete FIRST, then cleanup
+            defaults.set(true, forKey: Keys.alertsMigrationDone)
+
+            // Cleanup: remove legacy json so it cannot drift / get re-used accidentally
+            fileStorage.remove(OpenAPS.Monitor.alertHistory)
+        }
+    }
+
+    // MARK: - UserDefaults persistence
+
+    // Uses the same encoder/decoder as file storage to keep Date encoding consistent.
+
+    /// Loads all persisted alerts from UserDefaults.
+    ///
+    /// Decoding uses `JSONCoding.decoder` to match the previous on-disk JSON encoding/decoding behavior.
+    /// If decoding fails, the stored payload is removed so the app can recover cleanly.
+    private func loadAll() -> [AlertEntry] {
+        guard let data = defaults.data(forKey: Keys.alertsData) else { return [] }
+        do {
+            return try JSONCoding.decoder.decode([AlertEntry].self, from: data)
+        } catch {
+            debug(.storage, "Failed to decode alerts from UserDefaults: \(error)")
+            // Clear corrupt payload so app can recover
+            defaults.removeObject(forKey: Keys.alertsData)
+            return []
+        }
+    }
+
+    /// Persists all alerts to UserDefaults.
+    ///
+    /// Encoding uses `JSONCoding.encoder` to match the previous on-disk JSON encoding behavior.
+    private func saveAll(_ alerts: [AlertEntry]) {
+        do {
+            let data = try JSONCoding.encoder.encode(alerts)
+            defaults.set(data, forKey: Keys.alertsData)
+        } catch {
+            debug(.storage, "Failed to encode alerts to UserDefaults: \(error)")
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Filters the provided alerts to the last 24 hours and sorts them with newest first.
+    private func pruneAndSort(_ alerts: [AlertEntry]) -> [AlertEntry] {
+        alerts
+            .filter { $0.issuedDate.addingTimeInterval(1.days.timeInterval) > Date() }
+            .sorted { $0.issuedDate > $1.issuedDate }
+    }
+
+    /// De-duplicates alert entries by `issuedDate` (keeping the newest occurrence when duplicates exist).
+    ///
+    /// This matches `AlertEntry`'s `Equatable`/`Hashable` semantics (both based on `issuedDate`).
+    private func dedupeByIssuedDate(_ alerts: [AlertEntry]) -> [AlertEntry] {
+        var seen = Set<Date>()
+        var result: [AlertEntry] = []
+        for item in alerts.sorted(by: { $0.issuedDate > $1.issuedDate }) {
+            if seen.insert(item.issuedDate).inserted {
+                result.append(item)
+            }
+        }
+        return result
     }
 }
