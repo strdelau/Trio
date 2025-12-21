@@ -20,6 +20,10 @@ protocol AlertHistoryStorage {
 final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
     private let processQueue = DispatchQueue.markedQueue(label: "BaseAlertsStorage.processQueue")
 
+    /// Enable "re-entrant" access of DispatchQueue via identifier: public API methods can safely synchronize onto `processQueue`
+    /// without risking a deadlock when they are called from within other `processQueue`-synchronized code.
+    private let queueKeyForBaseAlertsStorageProcessQueue = DispatchSpecificKey<Void>()
+
     private let defaults: UserDefaults
 
     /// Legacy JSON file storage used only for one-time migration from the historical on-disk JSON file.
@@ -49,12 +53,36 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
     ///   - userDefaults: The UserDefaults instance used for persistence. Defaults to `.standard`.
     init(resolver: Resolver, userDefaults: UserDefaults = .standard) {
         defaults = userDefaults
+        processQueue.setSpecific(key: queueKeyForBaseAlertsStorageProcessQueue, value: ())
         injectServices(resolver)
 
         // FIXME: this can be removed in later releases
         migrateFromLegacyJSONIfNeeded()
 
         unacknowledgedAlertsPublisher.send(unacknowledgedAlertsWithinLast24Hours().isNotEmpty)
+    }
+
+    /// Executes the given block synchronously on `processQueue` with deadlock avoidance.
+    ///
+    /// All reads and writes of the alert history should be serialized through `processQueue` to prevent
+    /// races between callers on different threads (e.g., UI reads vs. background writes).
+    ///
+    /// However, some public API methods may be called both externally (from arbitrary threads) and internally
+    /// from within other `processQueue`-synchronized methods. Calling `processQueue.sync` unconditionally in that
+    /// situation can deadlock if the caller is already on `processQueue`.
+    ///
+    /// This helper checks whether execution is already on `processQueue` using `queueKey`:
+    /// - If already on `processQueue`, it executes the block immediately.
+    /// - Otherwise, it synchronizes execution onto `processQueue` via `processQueue.sync`.
+    ///
+    /// - Parameter block: The work to perform.
+    /// - Returns: The block's return value.
+    private func queueSync<T>(_ block: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: queueKeyForBaseAlertsStorageProcessQueue) != nil {
+            return block()
+        } else {
+            return processQueue.sync { block() }
+        }
     }
 
     /// Stores a new alert entry and notifies observers.
@@ -90,9 +118,11 @@ final class BaseAlertHistoryStorage: AlertHistoryStorage, Injectable {
 
     /// Returns all unacknowledged alerts from the last 24 hours, sorted newest first.
     func unacknowledgedAlertsWithinLast24Hours() -> [AlertEntry] {
-        loadAll()
-            .filter { $0.issuedDate.addingTimeInterval(1.days.timeInterval) > Date() && $0.acknowledgedDate == nil }
-            .sorted { $0.issuedDate > $1.issuedDate }
+        queueSync {
+            loadAll()
+                .filter { $0.issuedDate.addingTimeInterval(1.days.timeInterval) > Date() && $0.acknowledgedDate == nil }
+                .sorted { $0.issuedDate > $1.issuedDate }
+        }
     }
 
     /// Acknowledges an alert (by issued date), or stores an error for it.
