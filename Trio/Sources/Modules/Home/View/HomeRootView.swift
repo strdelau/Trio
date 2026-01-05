@@ -1079,7 +1079,7 @@ extension Home {
                         .tabItem { Label("Main", systemImage: "chart.xyaxis.line") }
                         .badge(carbsRequiredBadge).tag(0)
 
-                    NavigationStack { DataTable.RootView(resolver: resolver) }
+                    NavigationStack { History.RootView(resolver: resolver) }
                         .tabItem { Label("History", systemImage: historySFSymbol) }.tag(1)
 
                     Spacer()
