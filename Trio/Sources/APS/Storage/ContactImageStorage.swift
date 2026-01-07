@@ -90,8 +90,8 @@ final class BaseContactImageStorage: ContactImageStorage, Injectable {
             newContactImageEntry.ringGap = Int16(contactImageEntry.ringGap.rawValue)
             newContactImageEntry.fontSize = Int16(contactImageEntry.fontSize.rawValue)
             newContactImageEntry.fontSizeSecondary = Int16(contactImageEntry.secondaryFontSize.rawValue)
-            newContactImageEntry.fontWidth = contactImageEntry.fontWeight.asString
-            newContactImageEntry.fontWeight = contactImageEntry.fontWidth.asString
+            newContactImageEntry.fontWidth = contactImageEntry.fontWidth.asString
+            newContactImageEntry.fontWeight = contactImageEntry.fontWeight.asString
 
             do {
                 guard self.backgroundContext.hasChanges else { return }
